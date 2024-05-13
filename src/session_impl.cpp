@@ -4511,7 +4511,7 @@ namespace {
 			torrent* t = p->associated_torrent().lock().get();
 			TORRENT_ASSERT(t);
 
-			if (unchoke_set_size > 0)
+			if (p->statistics().total_payload_download() > 0 || (unchoke_set_size > 0 && true))
 			{
 				// yes, this peer should be unchoked
 				if (p->is_choked())
@@ -4519,8 +4519,8 @@ namespace {
 					if (!t->unchoke_peer(*p))
 						continue;
 				}
-
-				--unchoke_set_size;
+				if (p->statistics().total_payload_download() <= 0)
+					--unchoke_set_size;
 
 				TORRENT_ASSERT(p->peer_info_struct());
 				if (p->peer_info_struct()->optimistically_unchoked)
