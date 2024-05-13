@@ -65,6 +65,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 #include <boost/asio/ts/internet.hpp>
 #include <boost/asio/ts/executor.hpp>
+#include <boost/regex.hpp>
 #include "libtorrent/aux_/disable_warnings_pop.hpp"
 
 #include "libtorrent/ssl.hpp"
@@ -195,6 +196,28 @@ namespace libtorrent {
 	std::mutex _handler_storage_mutex;
 	bool _handler_logger_registered = false;
 #endif
+
+namespace {
+	bool is_bad_peer(const peer_info& info)
+	{
+		static const boost::regex id_filter("-(XL|SD|XF|QD|BN|DL|TS|DT)(\\d+)-"),
+			ua_filter(R"((\d+.\d+.\d+.\d+|cacao_torrent))"),
+			consume_filter(R"((dt/torrent|Taipei-torrent))");
+		if (boost::regex_match(info.client, consume_filter)) {
+			return true;
+		}
+		return boost::regex_match(info.pid.data(), info.pid.data() + 8, id_filter) || boost::regex_match(info.client, ua_filter);
+	}
+
+	bool is_bittorrent_media_player(const lt::peer_info& info)
+	{
+		if (info.client.find("StellarPlayer") != std::string::npos || info.client.find("Elementum") != std::string::npos) {
+			return true;
+		}
+		static const boost::regex player_filter("-(UW\\w{4}|SP(([0-2]\\d{3})|(3[0-5]\\d{2})))-");
+		return !!boost::regex_match(info.pid.data(), info.pid.data() + 8, player_filter);
+	}
+}
 
 namespace aux {
 
@@ -4498,6 +4521,18 @@ namespace {
 
 		int unchoke_set_size = allowed_upload_slots - num_opt_unchoke;
 
+		auto should_unchoke = [&](const peer_connection* p) -> bool {
+			if (p->statistics().total_payload_download() > 0){
+				return true;
+			}
+			if (unchoke_set_size <= 0) {
+				return false;
+			}
+			peer_info info;
+			p->get_peer_info(info);
+			return !is_bad_peer(info) && !is_bittorrent_media_player(info);
+		};
+
 		// go through all the peers and unchoke the first ones and choke
 		// all the other ones.
 		for (auto p : peers)
@@ -4511,7 +4546,7 @@ namespace {
 			torrent* t = p->associated_torrent().lock().get();
 			TORRENT_ASSERT(t);
 
-			if (p->statistics().total_payload_download() > 0 || (unchoke_set_size > 0 && true))
+			if (should_unchoke(p))
 			{
 				// yes, this peer should be unchoked
 				if (p->is_choked())
