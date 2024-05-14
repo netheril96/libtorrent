@@ -200,9 +200,11 @@ namespace libtorrent {
 namespace {
 	bool is_bad_peer(const peer_info& info)
 	{
+		if (info.client.find("Xunlei") != std::string::npos)
+			return true;
 		static const boost::regex id_filter("-(XL|SD|XF|QD|BN|DL|TS|DT)(\\d+)-"),
-			ua_filter(R"((\d+.\d+.\d+.\d+|cacao_torrent))"),
-			consume_filter(R"((dt/torrent|Taipei-torrent))");
+			ua_filter(R"((\d+.\d+.\d+.\d+|cacao_torrent).*)"),
+			consume_filter(R"((dt/torrent|hp/torrent|Taipei-torrent).*)");
 		if (boost::regex_match(info.client, consume_filter)) {
 			return true;
 		}
@@ -4188,6 +4190,12 @@ namespace {
 			if (!pi) continue;
 			if (pi->web_seed) continue;
 
+			peer_info info;
+			p->get_peer_info(info);
+			if (info.progress <= 0.05f && info.progress_ppm <= 50000) {
+				continue;
+			}
+
 			if (pi->optimistically_unchoked)
 			{
 				prev_opt_unchoke.push_back(pi);
@@ -4522,15 +4530,12 @@ namespace {
 		int unchoke_set_size = allowed_upload_slots - num_opt_unchoke;
 
 		auto should_unchoke = [&](const peer_connection* p) -> bool {
-			if (p->statistics().total_payload_download() > 0){
+			if (5 * p->statistics().total_payload_download() >= p->statistics().total_payload_upload()){
 				return true;
-			}
-			if (unchoke_set_size <= 0) {
-				return false;
 			}
 			peer_info info;
 			p->get_peer_info(info);
-			return !is_bad_peer(info) && !is_bittorrent_media_player(info);
+			return !is_bad_peer(info) && !is_bittorrent_media_player(info) && unchoke_set_size > 0;
 		};
 
 		// go through all the peers and unchoke the first ones and choke
@@ -4554,8 +4559,7 @@ namespace {
 					if (!t->unchoke_peer(*p))
 						continue;
 				}
-				if (p->statistics().total_payload_download() <= 0)
-					--unchoke_set_size;
+				--unchoke_set_size;
 
 				TORRENT_ASSERT(p->peer_info_struct());
 				if (p->peer_info_struct()->optimistically_unchoked)
