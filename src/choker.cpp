@@ -60,11 +60,6 @@ namespace {
 		std::int64_t const c2 = rhs->downloaded_in_last_round();
 
 		if (c1 != c2) return c1 > c2 ? 1 : -1;
-
-		bool ipv6_lhs = lhs->peer_info_struct()->is_v6_addr || lhs->peer_info_struct()->address().is_v6();
-		bool ipv6_rhs = rhs->peer_info_struct()->is_v6_addr || rhs->peer_info_struct()->address().is_v6();
-
-		if (ipv6_lhs != ipv6_rhs) return ipv6_lhs > ipv6_rhs ? 1 : -1;
 		return 0;
 	}
 
